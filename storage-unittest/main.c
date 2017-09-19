@@ -329,8 +329,106 @@ test_abort:
     TEST_END;
 }
 
-TEST_P(DeleteOpened)
-{
+TEST_P(CreateMoveDelete) {
+    int rc;
+    file_handle_t handle;
+    const char* fname1 = "test_create_move_delete_1_file";
+    const char* fname2 = "test_create_move_delete_2_file";
+
+    TEST_BEGIN(__func__);
+
+    // make sure test file does not exist (expect success or ERR_NOT_FOUND)
+    rc = storage_delete_file(ss, fname1, STORAGE_OP_COMPLETE);
+    rc = (rc == ERR_NOT_FOUND) ? 0 : rc;
+    EXPECT_EQ(0, rc, "delete test file1");
+    ASSERT_ALL_OK();
+    rc = storage_delete_file(ss, fname2, STORAGE_OP_COMPLETE);
+    rc = (rc == ERR_NOT_FOUND) ? 0 : rc;
+    EXPECT_EQ(0, rc, "delete test file2");
+    ASSERT_ALL_OK();
+
+    // one more time (expect ERR_NOT_FOUND)
+    rc = storage_delete_file(ss, fname1, STORAGE_OP_COMPLETE);
+    EXPECT_EQ(ERR_NOT_FOUND, rc, "delete 1 again");
+    ASSERT_ALL_OK();
+    rc = storage_delete_file(ss, fname2, STORAGE_OP_COMPLETE);
+    EXPECT_EQ(ERR_NOT_FOUND, rc, "delete 2 again");
+    ASSERT_ALL_OK();
+
+    // create file (expect 0)
+    rc = storage_open_file(
+            ss, &handle, fname1,
+            STORAGE_FILE_OPEN_CREATE | STORAGE_FILE_OPEN_CREATE_EXCLUSIVE,
+            STORAGE_OP_COMPLETE);
+    EXPECT_EQ(0, rc, "create test file");
+    ASSERT_ALL_OK();
+
+    // move file
+    rc = storage_move_file(ss, handle, fname1, fname2,
+                           STORAGE_FILE_MOVE_CREATE |
+                                   STORAGE_FILE_MOVE_CREATE_EXCLUSIVE |
+                                   STORAGE_FILE_MOVE_OPEN_FILE,
+                           STORAGE_OP_COMPLETE);
+    EXPECT_EQ(0, rc, "move test file");
+    ASSERT_ALL_OK();
+
+    // try to create it again while it is still opened (expect
+    // ERR_ALREADY_EXISTS)
+    rc = storage_open_file(
+            ss, &handle, fname2,
+            STORAGE_FILE_OPEN_CREATE | STORAGE_FILE_OPEN_CREATE_EXCLUSIVE,
+            STORAGE_OP_COMPLETE);
+    EXPECT_EQ(ERR_ALREADY_EXISTS, rc, "create again");
+    ASSERT_ALL_OK();
+
+    // close it
+    storage_close_file(handle);
+
+    // try to create it again while it is closed (expect ERR_ALREADY_EXISTS)
+    rc = storage_open_file(
+            ss, &handle, fname2,
+            STORAGE_FILE_OPEN_CREATE | STORAGE_FILE_OPEN_CREATE_EXCLUSIVE,
+            STORAGE_OP_COMPLETE);
+    EXPECT_EQ(ERR_ALREADY_EXISTS, rc, "create again");
+    ASSERT_ALL_OK();
+
+    // create file1 (expect 0)
+    rc = storage_open_file(
+            ss, &handle, fname1,
+            STORAGE_FILE_OPEN_CREATE | STORAGE_FILE_OPEN_CREATE_EXCLUSIVE,
+            STORAGE_OP_COMPLETE);
+    EXPECT_EQ(0, rc, "create test file");
+    ASSERT_ALL_OK();
+
+    // move file
+    rc = storage_move_file(ss, handle, fname1, fname2,
+                           STORAGE_FILE_MOVE_CREATE |
+                                   STORAGE_FILE_MOVE_CREATE_EXCLUSIVE |
+                                   STORAGE_FILE_MOVE_OPEN_FILE,
+                           STORAGE_OP_COMPLETE);
+    EXPECT_EQ(ERR_ALREADY_EXISTS, rc, "move test file");
+    ASSERT_ALL_OK();
+
+    // close it
+    storage_close_file(handle);
+
+    // delete file (expect 0)
+    rc = storage_delete_file(ss, fname2, STORAGE_OP_COMPLETE);
+    EXPECT_EQ(0, rc, "delete test file");
+    ASSERT_ALL_OK();
+
+    // one more time (expect ERR_NOT_FOUND)
+    rc = storage_delete_file(ss, fname2, STORAGE_OP_COMPLETE);
+    EXPECT_EQ(ERR_NOT_FOUND, rc, "delete again");
+    ASSERT_ALL_OK();
+
+test_abort:
+    storage_delete_file(ss, fname1, STORAGE_OP_COMPLETE);
+    storage_delete_file(ss, fname2, STORAGE_OP_COMPLETE);
+    TEST_END;
+}
+
+TEST_P(DeleteOpened) {
     int rc;
     file_handle_t handle;
     const char *fname = "delete_opened_test_file";
@@ -2683,6 +2781,7 @@ void run_all_tests(const char *port)
     TLOGI("SS-unittest: %s: begins\n", port);
 
     RUN_TEST_P(port, CreateDelete);
+    RUN_TEST_P(port, CreateMoveDelete);
     RUN_TEST_P(port, DeleteOpened);
     RUN_TEST_P(port, OpenNoCreate);
     RUN_TEST_P(port, OpenOrCreate);
