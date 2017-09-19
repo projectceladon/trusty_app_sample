@@ -1009,24 +1009,114 @@ test_abort:
     TEST_END;
 }
 
-TEST_P(WriteSparse)
-{
+TEST_P(WriteReadAtOffsetSparse) {
     int rc;
     file_handle_t handle;
-    const char *fname = "test_write_sparse";
+    size_t blk = 2048;
+    size_t blk_cnt = 32;
+    const char* fname = "test_write_at_offset";
 
     TEST_BEGIN(__func__);
 
-    // open/create/truncate file.
-    rc = storage_open_file(ss, &handle, fname,
-                           STORAGE_FILE_OPEN_CREATE | STORAGE_FILE_OPEN_TRUNCATE,
-                           STORAGE_OP_COMPLETE);
+    // create/truncate file.
+    rc = storage_open_file(
+            ss, &handle, fname,
+            STORAGE_FILE_OPEN_CREATE | STORAGE_FILE_OPEN_TRUNCATE,
+            STORAGE_OP_COMPLETE);
     ASSERT_EQ(0, rc);
 
-    // write value past en of file
-    uint32_t val = 0xDEADBEEF;
-    rc = storage_write(handle, 1, &val, sizeof(val), STORAGE_OP_COMPLETE);
-    ASSERT_EQ(ERR_NOT_VALID, rc);
+    storage_off_t off1 = blk;
+    storage_off_t off2 = blk * (blk_cnt - 1);
+
+    // write known pattern data at non-zero offset1
+    rc = WritePatternChunk(handle, off1, blk, true);
+    ASSERT_EQ((int)blk, rc);
+
+    // write known pattern data at non-zero offset2
+    rc = WritePatternChunk(handle, off2, blk, true);
+    ASSERT_EQ((int)blk, rc);
+
+    // read data back at offset1
+    rc = ReadPattern(handle, off1, blk, blk);
+    ASSERT_EQ((int)blk, rc);
+
+    // read data back at offset2
+    rc = ReadPattern(handle, off2, blk, blk);
+    ASSERT_EQ((int)blk, rc);
+
+    // read partially written data at end of file(expect to get data only, no
+    // padding)
+    rc = ReadPatternEOF(handle, off2 + blk / 2, blk);
+    ASSERT_EQ((int)blk / 2, rc);
+
+    // read data at offset 0 (expect success and zero data)
+    rc = ReadChunk(handle, 0, blk, blk, 0, 0);
+    ASSERT_EQ((int)blk, rc);
+
+    // read data from gap (expect success and zero data)
+    rc = ReadChunk(handle, off1 + blk, blk, blk, 0, 0);
+    ASSERT_EQ((int)blk, rc);
+
+    // read partially written data (start pointing within written data)
+    // (expect to get written data back and zeroes at the end)
+    rc = ReadChunk(handle, off1 + blk / 2, blk, 0, blk / 2, blk / 2);
+    ASSERT_EQ((int)blk, rc);
+
+    // read partially written data (start pointing withing unwritten data)
+    // expect to get zeroes at the beginning and proper data at the end
+    rc = ReadChunk(handle, off1 - blk / 2, blk, blk / 2, blk / 2, 0);
+    ASSERT_EQ((int)blk, rc);
+
+    // set file size to half way into first written block
+    rc = storage_set_file_size(handle, off1 + blk / 2, STORAGE_OP_COMPLETE);
+    ASSERT_EQ(0, rc);
+
+    // read partially written data at end of file(expect to get data only, no
+    // padding)
+    rc = ReadPatternEOF(handle, off1, blk);
+    ASSERT_EQ((int)blk / 2, rc);
+
+    // write known pattern data at non-zero offset2
+    rc = WritePatternChunk(handle, off2, blk, true);
+    ASSERT_EQ((int)blk, rc);
+
+    // read data back at offset1
+    rc = ReadPattern(handle, off1, blk / 2, blk / 2);
+    ASSERT_EQ((int)blk / 2, rc);
+
+    // read data from gap (expect success and zero data)
+    rc = ReadChunk(handle, off1 + blk / 2, blk, blk, 0, 0);
+    ASSERT_EQ((int)blk, rc);
+
+    // write known pattern data at non-zero offset1 - test again with
+    // set_file_size
+    rc = WritePatternChunk(handle, off1, blk, true);
+    ASSERT_EQ((int)blk, rc);
+
+    // set file size to half way into first written block
+    rc = storage_set_file_size(handle, off1 + blk / 2, STORAGE_OP_COMPLETE);
+    ASSERT_EQ(0, rc);
+
+    // read partially written data at end of file(expect to get data only, no
+    // padding)
+    rc = ReadPatternEOF(handle, off1, blk);
+    ASSERT_EQ((int)blk / 2, rc);
+
+    // set file size to offset2
+    rc = storage_set_file_size(handle, off2, STORAGE_OP_COMPLETE);
+    ASSERT_EQ(0, rc);
+
+    // write known pattern data at non-zero offset2
+    rc = WritePatternChunk(handle, off2, blk, true);
+    ASSERT_EQ((int)blk, rc);
+
+    // read data back at offset1
+    rc = ReadPattern(handle, off1, blk / 2, blk / 2);
+    ASSERT_EQ((int)blk / 2, rc);
+
+    // read data from gap (expect success and zero data)
+    rc = ReadChunk(handle, off1 + blk / 2, blk, blk, 0, 0);
+    ASSERT_EQ((int)blk, rc);
 
     // cleanup
     storage_close_file(handle);
@@ -2715,17 +2805,9 @@ TEST_P(TransactResumeAfterNonFatalError)
 
     // issue some commands that should fail with non-fatal errors
 
-    // write past end of file
-    uint32_t val = 0xDEADBEEF;
-    rc = storage_write(handle,  exp_len/2 + 1, &val, sizeof(val), 0);
-    ASSERT_EQ(ERR_NOT_VALID, rc);
-
     // read past end of file
-    rc = storage_read(handle, exp_len/2 + 1, &val, sizeof(val));
-    ASSERT_EQ(ERR_NOT_VALID, rc);
-
-    // try to extend file past end of file
-    rc = storage_set_file_size(handle, exp_len/2 + 1, 0);
+    uint32_t val = 0xDEADBEEF;
+    rc = storage_read(handle, exp_len / 2 + 1, &val, sizeof(val));
     ASSERT_EQ(ERR_NOT_VALID, rc);
 
     // open non existing file
@@ -2794,7 +2876,7 @@ void run_all_tests(const char *port)
     RUN_TEST_P(port, GetFileSize);
     RUN_TEST_P(port, SetFileSize);
     RUN_TEST_P(port, WriteReadAtOffset);
-    RUN_TEST_P(port, WriteSparse);
+    RUN_TEST_P(port, WriteReadAtOffsetSparse);
     RUN_TEST_P(port, CreatePersistent32K);
     RUN_TEST_P(port, ReadPersistent32k);
     RUN_TEST_P(port, CleanUpPersistent32K);
