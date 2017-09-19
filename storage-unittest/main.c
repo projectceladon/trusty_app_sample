@@ -428,6 +428,120 @@ test_abort:
     TEST_END;
 }
 
+TEST_P(FileList) {
+    int rc;
+    file_handle_t handle;
+    struct storage_open_dir_state* dir;
+    const char* fname_pat = "test_file_list_%d_file";
+    char file_name[64];
+    char file_name_dir[64];
+    uint8_t read_dir_flags;
+    int i;
+    int file_count = 100;
+
+    TEST_BEGIN(__func__);
+
+    // make sure test file does not exist (expect success or ERR_NOT_FOUND)
+    for (i = 0; i < file_count; i++) {
+        snprintf(file_name, sizeof(file_name), fname_pat, i);
+        rc = storage_delete_file(ss, file_name, STORAGE_OP_COMPLETE);
+        rc = (rc == ERR_NOT_FOUND) ? 0 : rc;
+        EXPECT_EQ(0, rc, "delete test file1");
+        ASSERT_ALL_OK();
+    }
+
+    // one more time (expect ERR_NOT_FOUND)
+    for (i = 0; i < file_count; i++) {
+        snprintf(file_name, sizeof(file_name), fname_pat, i);
+        rc = storage_delete_file(ss, file_name, STORAGE_OP_COMPLETE);
+        EXPECT_EQ(ERR_NOT_FOUND, rc, "delete 1 again");
+        ASSERT_ALL_OK();
+    }
+
+    // test empty dir
+    rc = storage_open_dir(ss, "", &dir);
+    EXPECT_EQ(0, rc, "open_dir");
+    ASSERT_ALL_OK();
+
+    rc = storage_read_dir(ss, dir, &read_dir_flags, file_name_dir,
+                          sizeof(file_name_dir));
+    EXPECT_EQ(0, rc, "read_dir");
+    EXPECT_EQ(STORAGE_FILE_LIST_END,
+              read_dir_flags & STORAGE_FILE_LIST_STATE_MASK, "dir flags");
+    ASSERT_ALL_OK();
+
+    storage_close_dir(ss, dir);
+
+    // create file (expect 0)
+    snprintf(file_name, sizeof(file_name), fname_pat, 0);
+    rc = storage_open_file(
+            ss, &handle, file_name,
+            STORAGE_FILE_OPEN_CREATE | STORAGE_FILE_OPEN_CREATE_EXCLUSIVE,
+            STORAGE_OP_COMPLETE);
+    EXPECT_EQ(0, rc, "create test file 1");
+    ASSERT_ALL_OK();
+
+    // close it
+    storage_close_file(handle);
+
+    for (i = 1; i < file_count; i++) {
+        snprintf(file_name, sizeof(file_name), fname_pat, i);
+        rc = storage_open_file(
+                ss, &handle, file_name,
+                STORAGE_FILE_OPEN_CREATE | STORAGE_FILE_OPEN_CREATE_EXCLUSIVE,
+                0);
+        EXPECT_EQ(0, rc, "create test file 2");
+        ASSERT_ALL_OK();
+
+        // close it
+        storage_close_file(handle);
+    }
+
+    // test read_dir fname1 comitted, fname2 added
+    rc = storage_open_dir(ss, "", &dir);
+    EXPECT_EQ(0, rc, "open_dir");
+    ASSERT_ALL_OK();
+
+    snprintf(file_name, sizeof(file_name), fname_pat, 0);
+    rc = storage_read_dir(ss, dir, &read_dir_flags, file_name_dir,
+                          sizeof(file_name_dir));
+    EXPECT_EQ(0, rc, "read_dir");
+    EXPECT_EQ(STORAGE_FILE_LIST_COMMITTED,
+              read_dir_flags & STORAGE_FILE_LIST_STATE_MASK, "dir flags");
+    EXPECT_EQ(0, strcmp(file_name, file_name_dir), "file name");
+    ASSERT_ALL_OK();
+
+    for (i = 1; i < file_count; i++) {
+        rc = storage_read_dir(ss, dir, &read_dir_flags, file_name_dir,
+                              sizeof(file_name_dir));
+        EXPECT_EQ(0, rc, "read_dir");
+        EXPECT_EQ(STORAGE_FILE_LIST_ADDED,
+                  read_dir_flags & STORAGE_FILE_LIST_STATE_MASK, "dir flags");
+        EXPECT_NE(0, strcmp(file_name, file_name_dir), "file name");
+        ASSERT_ALL_OK();
+    }
+
+    rc = storage_read_dir(ss, dir, &read_dir_flags, file_name_dir,
+                          sizeof(file_name_dir));
+    EXPECT_EQ(0, rc, "read_dir");
+    EXPECT_EQ(STORAGE_FILE_LIST_END,
+              read_dir_flags & STORAGE_FILE_LIST_STATE_MASK, "end dir flag");
+    ASSERT_ALL_OK();
+
+    storage_close_dir(ss, dir);
+
+    rc = storage_end_transaction(ss, true);
+    EXPECT_EQ(0, rc, "commit");
+    ASSERT_ALL_OK();
+
+test_abort:
+    for (i = 0; i < file_count; i++) {
+        snprintf(file_name, sizeof(file_name), fname_pat, i);
+        rc = storage_delete_file(ss, file_name, STORAGE_OP_COMPLETE);
+    }
+    TEST_END;
+}
+
 TEST_P(DeleteOpened) {
     int rc;
     file_handle_t handle;
@@ -2864,6 +2978,7 @@ void run_all_tests(const char *port)
 
     RUN_TEST_P(port, CreateDelete);
     RUN_TEST_P(port, CreateMoveDelete);
+    RUN_TEST_P(port, FileList);
     RUN_TEST_P(port, DeleteOpened);
     RUN_TEST_P(port, OpenNoCreate);
     RUN_TEST_P(port, OpenOrCreate);
