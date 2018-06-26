@@ -23,7 +23,6 @@ trusty_app_manifest_t TRUSTY_APP_MANIFEST_ATTRS trusty_app_manifest =
 	.uuid = IPC_UNITTEST_SRV_APP_UUID,
 
 	/* optional configuration options here */
-	.config_options =
 	{
 		/* four pages for heap */
 		TRUSTY_APP_CONFIG_MIN_HEAP_SIZE(4 * 4096),

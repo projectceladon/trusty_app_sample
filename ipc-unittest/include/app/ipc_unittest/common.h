@@ -25,5 +25,5 @@
 #define TLOGI(fmt, ...) \
     fprintf(stderr, "%s: %d: " fmt, LOG_TAG, __LINE__,  ## __VA_ARGS__)
 
-#define MSEC 1000000UL
+#define MSEC 1000000ULL
 #define SRV_PATH_BASE   "com.android.ipc-unittest"

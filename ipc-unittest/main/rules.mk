@@ -21,8 +21,15 @@ MODULE_INCLUDES += \
 	$(LOCAL_DIR)/../include \
 
 MODULE_SRCS += \
-	$(LOCAL_DIR)/manifest.c \
-	$(LOCAL_DIR)/main.c \
+	$(LOCAL_DIR)/manifest.c
+
+ifneq (,$(TRUSTY_ANDROID_P))
+MODULE_SRCS += \
+	$(LOCAL_DIR)/main-handle-set.c
+else
+MODULE_SRCS += \
+	$(LOCAL_DIR)/main.c
+endif
 
 MODULE_DEPS += \
 	app/trusty \

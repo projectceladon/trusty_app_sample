@@ -32,6 +32,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <uapi/err.h>
 #include <trusty_unittest.h>
 #include <lib/hwkey/hwkey.h>
 #include <lib/rng/trusty_rng.h>
@@ -212,7 +213,7 @@ static void run_hwkey_tests(void)
 	TLOGI("WELCOME TO HWKEY UNITTEST!\n");
 	long rc = hwkey_open();
 	if (rc < 0) {
-		TLOGI("err (%d) opening hwkey session\n", rc);
+		TLOGI("err (%ld) opening hwkey session\n", rc);
 		return;
 	}
 
@@ -221,8 +222,6 @@ static void run_hwkey_tests(void)
 	generic_invalid_session();
 	generic_closed_session();
 
-	hwkey_derive_repeatable();
-	hwkey_derive_different();
 	hwkey_derive_zero_length();
 	hwkey_get_storage_auth();
 	hwkey_get_keybox();

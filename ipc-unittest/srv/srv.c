@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include <err.h>
-#include <list.h>
+#include <uapi/err.h>
+#include <lk/list.h>
 #include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -247,7 +247,7 @@ static int _create_service(const struct tipc_srv *srv,
                            struct tipc_srv_state *state)
 {
 	if (!srv || !state) {
-		TLOGI("null service specified: %p: %p\n");
+		TLOGI("null services specified\n");
 		return ERR_INVALID_ARGS;
 	}
 
@@ -611,6 +611,9 @@ static int _echo_handle_msg(const uevent_t *ev, int delay)
 	iovec_t iov;
 	ipc_msg_t msg;
 	echo_chan_state_t *st = containerof(ev->cookie, echo_chan_state_t, handler);
+#if TRUSTY_ANDROID_P
+	handle_t  handles[8];
+#endif
 
 	/* get all messages */
 	while (st->msg_cnt != st->msg_max_num) {
@@ -637,9 +640,13 @@ static int _echo_handle_msg(const uevent_t *ev, int delay)
 		iov.len  = sizeof(echo_msg_buf);
 		msg.num_iov = 1;
 		msg.iov     = &iov;
-		msg.num_handles = 0;
-		msg.handles  = NULL;
-
+#if TRUSTY_ANDROID_P
+		msg.handles = handles;
+		msg.num_handles = st->msg_queue[st->msg_next_r].num_handles;
+#else
+		msg.handles = 0;
+		msg.num_handles = NULL;
+#endif
 		/* read msg content */
 		rc = read_msg(ev->handle, st->msg_queue[st->msg_next_r].id, 0, &msg);
 		if (rc < 0) {
@@ -658,6 +665,13 @@ static int _echo_handle_msg(const uevent_t *ev, int delay)
 
 		/* and send it back */
 		rc = send_msg(ev->handle, &msg);
+
+#if TRUSTY_ANDROID_P
+		/* close all received handles */
+		for (uint i = 0; i < msg.num_handles; i++) {
+			close(handles[i]);
+		}
+#endif
 		if (rc == ERR_NOT_ENOUGH_BUFFER)
 			break;
 
