@@ -44,7 +44,9 @@
 
 #define STORAGE_AUTH_KEY_SIZE 	32
 
+#ifdef WITH_HWCRYPTO_UNITTEST
 static const uint8_t UNITTEST_KEYSLOT[] =  "unittestkeyslotunittestkeyslotun";
+#endif
 
 /**
  * Implement this hook for device specific hwkey tests
