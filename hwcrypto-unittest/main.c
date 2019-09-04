@@ -36,6 +36,8 @@
 #include <trusty_unittest.h>
 #include <lib/hwkey/hwkey.h>
 #include <lib/rng/trusty_rng.h>
+#include <lib/storage/storage.h>
+#include <trusty_std.h>
 
 #define LOG_TAG "hwcrypto_unittest"
 
@@ -370,7 +372,27 @@ static void run_all_tests(void) {
 	run_hwkey_tests();
 }
 
+void wait_android_is_ready(const char *port)
+{
+    int rc;
+    storage_session_t session;
+
+    TLOGI("hwcrypto-unittest: %s: waiting for server\n", port);
+    do {
+        rc = storage_open_session(&session, port);
+        if (rc < 0) {
+            TLOGI("failed (%d) to connect to storage server - retrying\n", rc);
+        }
+        nanosleep(0, 0, 1000000);
+    } while (rc < 0);
+    storage_close_session(session);
+
+    TLOGI("hwcrypto-unittest: %s: begins\n", port);
+}
+
 int main(void) {
+	wait_android_is_ready(STORAGE_CLIENT_TD_PORT);
+
 	run_all_tests();
 }
 
